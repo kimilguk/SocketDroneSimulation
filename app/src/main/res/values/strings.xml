@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">SocketDroneSimulation</string>
+    <string name="btn_reset_position">초기자세로 조정</string>
+    <string name="btn_drop_bomb">폭탄투하</string>
+</resources>
