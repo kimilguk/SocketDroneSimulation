@@ -17,6 +17,9 @@ class MainActivity : AppCompatActivity() {
     // drone.js 기준 기본값 데이터 구조체
     private var currentControls = DroneControls()
 
+    private var isFpvCamera = false
+    private var isBottomCamera = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -25,8 +28,9 @@ class MainActivity : AppCompatActivity() {
 
         val joystickLeft = findViewById<JoystickView>(R.id.joystickLeft)
         val joystickRight = findViewById<JoystickView>(R.id.joystickRight)
-        val btnReset = findViewById<Button>(R.id.btnReset)
-        val btnDropBomb = findViewById<Button>(R.id.btnDropBomb)
+        val btnC = findViewById<Button>(R.id.btnC)
+        val btnM = findViewById<Button>(R.id.btnM)
+        val btnB = findViewById<Button>(R.id.btnB)
 
         // 왼쪽 조이스틱: 수직 제어부 (Yaw / Throttle)
         joystickLeft.onJoystickMoveListener = { x, y ->
@@ -52,25 +56,55 @@ class MainActivity : AppCompatActivity() {
             sendControlData()
         }
 
-        // 초기자세 조정 버튼
-        btnReset.setOnClickListener {
+        // V (출발지점으로 재시작) 버튼 추가 및 클릭 리스너 설정
+        val btnV = findViewById<Button>(R.id.btnV)
+
+        btnV.setOnClickListener {
+            // 1. 앱 내부 조이스틱 및 컨트롤 변수 초기화 (134 = 원점)
             currentControls.roll = 134
             currentControls.pitch = 134
             currentControls.yaw = 134
             currentControls.throttle = 134
             currentControls.leftSwitch = 0
-            currentControls.gear = 0
+            currentControls.gear = 100 // 카메라 및 시점 초기화 범위 값
+
+            isFpvCamera = false
+            isBottomCamera = false
 
             joystickLeft.resetJoystick()
             joystickRight.resetJoystick()
 
-            sendControlData(action = "reset")
+            // 2. drone.js에 resetDrone() 실행을 요청하는 웹소켓 전송
+            sendControlData(key = "V", action = "reset")
         }
 
-        // 폭탄투하 버튼
-        btnDropBomb.setOnClickListener {
-            currentControls.leftSwitch = 1
-            sendControlData(action = "dropBomb")
+        // C: 1인칭시점 카메라 (toggleDroneView / gear: 10~20)
+        btnC.setOnClickListener {
+            isFpvCamera = !isFpvCamera
+            isBottomCamera = false
+
+            // drone.js: 10 < gear < 20 -> droneView = true, 90 < gear < 110 -> camera reset
+            currentControls.gear = if (isFpvCamera) 15 else 100
+
+            sendControlData(key = "C", action = "toggleDroneView")
+        }
+
+        // M: 하부카메라 (toggleBottomView / gear: 20~50)
+        btnM.setOnClickListener {
+            isBottomCamera = !isBottomCamera
+            isFpvCamera = false
+
+            // drone.js: 20 < gear < 50 -> bottomView = true, 90 < gear < 110 -> camera reset
+            currentControls.gear = if (isBottomCamera) 30 else 100
+
+            sendControlData(key = "M", action = "toggleBottomView")
+        }
+
+        // B: 폭탄투하 (dropBomb / leftSwitch: -1)
+        btnB.setOnClickListener {
+            // drone.js: leftSwitch == -1 -> bombDropped = true
+            currentControls.leftSwitch = -1
+            sendControlData(key = "B", action = "dropBomb")
             currentControls.leftSwitch = 0
         }
     }
@@ -82,7 +116,8 @@ class MainActivity : AppCompatActivity() {
 
         // 대상 웹소켓 서버 주소 기입 (예: 드론 시뮬레이터 서버 주소)
         val request = Request.Builder()
-            .url("wss://webbasedronesimulation.onrender.com") // 에뮬레이터에서 PC 로컬 호스트 접속 시 주소 ws://192.168.123.168:8080
+            //.url("wss://webbasedronesimulation.onrender.com") // 에뮬레이터에서 클라우드 플랫폼 접속
+            .url("ws://192.168.1.3:8080") // 에뮬레이터에서 PC 로컬 호스트 접속 시
             .build()
 
         val listener = object : WebSocketListener() {
@@ -108,7 +143,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     // JSON 객체를 생성하여 웹소켓으로 송신
-    private fun sendControlData(action: String? = null) {
+    private fun sendControlData(key: String? = null, action: String? = null) {
         val json = JSONObject().apply {
             put("roll", currentControls.roll)
             put("pitch", currentControls.pitch)
@@ -116,8 +151,14 @@ class MainActivity : AppCompatActivity() {
             put("throttle", currentControls.throttle)
             put("leftSwitch", currentControls.leftSwitch)
             put("gear", currentControls.gear)
+            if (key != null) {
+                put("key", key)
+            }
             if (action != null) {
                 put("action", action)
+                if (action == "reset") {
+                    put("V", true)
+                }
                 if (action == "dropBomb") {
                     put("bomb", true)
                 }

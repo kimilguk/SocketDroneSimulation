@@ -1,5 +1,7 @@
 <resources>
     <string name="app_name">SocketDroneSimulation</string>
-    <string name="btn_reset_position">초기자세로 조정</string>
-    <string name="btn_drop_bomb">폭탄투하</string>
+    <string name="btn_v_reset">출발지점으로 재시작(V)</string>
+    <string name="btn_c_fpv">1인칭시점 카메라(C)</string>
+    <string name="btn_m_bottom">하부카메라(M)</string>
+    <string name="btn_b_bomb">폭탄투하(B)</string>
 </resources>
