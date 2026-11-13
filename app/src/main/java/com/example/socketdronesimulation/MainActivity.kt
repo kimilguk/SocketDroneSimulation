@@ -1,6 +1,8 @@
 package com.example.socketdronesimulation
 
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.widget.Button
 import androidx.appcompat.app.AppCompatActivity
@@ -20,6 +22,29 @@ class MainActivity : AppCompatActivity() {
     private var isFpvCamera = false
     private var isBottomCamera = false
 
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var isSendingLoopRunning = false
+    private var isLeftJoystickActive = false
+    private var isRightJoystickActive = false
+
+    private val sendLoopRunnable = object : Runnable {
+        override fun run() {
+            if (isLeftJoystickActive || isRightJoystickActive) {
+                sendControlData()
+                mainHandler.postDelayed(this, 50) // 50ms (20Hz) 주기적 연속 송신
+            } else {
+                isSendingLoopRunning = false
+            }
+        }
+    }
+
+    private fun startSendingLoop() {
+        if (!isSendingLoopRunning) {
+            isSendingLoopRunning = true
+            mainHandler.post(sendLoopRunnable)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -28,6 +53,7 @@ class MainActivity : AppCompatActivity() {
 
         val joystickLeft = findViewById<JoystickView>(R.id.joystickLeft)
         val joystickRight = findViewById<JoystickView>(R.id.joystickRight)
+        val btnV = findViewById<Button>(R.id.btnV)
         val btnC = findViewById<Button>(R.id.btnC)
         val btnM = findViewById<Button>(R.id.btnM)
         val btnB = findViewById<Button>(R.id.btnB)
@@ -36,11 +62,13 @@ class MainActivity : AppCompatActivity() {
         joystickLeft.onJoystickMoveListener = { x, y ->
             currentControls.yaw = mapJoystickAxis(x, 19, 244)
             currentControls.throttle = mapJoystickAxis(y, 20, 244)
-            sendControlData()
+            isLeftJoystickActive = true
+            startSendingLoop()
         }
         joystickLeft.onJoystickReleased = {
             currentControls.yaw = 134
             currentControls.throttle = 134
+            isLeftJoystickActive = false
             sendControlData()
         }
 
@@ -48,17 +76,17 @@ class MainActivity : AppCompatActivity() {
         joystickRight.onJoystickMoveListener = { x, y ->
             currentControls.roll = mapJoystickAxis(x, 19, 241)
             currentControls.pitch = mapJoystickAxis(y, 17, 243)
-            sendControlData()
+            isRightJoystickActive = true
+            startSendingLoop()
         }
         joystickRight.onJoystickReleased = {
             currentControls.roll = 134
             currentControls.pitch = 134
+            isRightJoystickActive = false
             sendControlData()
         }
 
         // V (출발지점으로 재시작) 버튼 추가 및 클릭 리스너 설정
-        val btnV = findViewById<Button>(R.id.btnV)
-
         btnV.setOnClickListener {
             // 1. 앱 내부 조이스틱 및 컨트롤 변수 초기화 (134 = 원점)
             currentControls.roll = 134
@@ -76,6 +104,7 @@ class MainActivity : AppCompatActivity() {
 
             // 2. drone.js에 resetDrone() 실행을 요청하는 웹소켓 전송
             sendControlData(key = "V", action = "reset")
+            currentControls.gear = 0
         }
 
         // C: 1인칭시점 카메라 (toggleDroneView / gear: 10~20)
@@ -83,10 +112,11 @@ class MainActivity : AppCompatActivity() {
             isFpvCamera = !isFpvCamera
             isBottomCamera = false
 
-            // drone.js: 10 < gear < 20 -> droneView = true, 90 < gear < 110 -> camera reset
             currentControls.gear = if (isFpvCamera) 15 else 100
-
             sendControlData(key = "C", action = "toggleDroneView")
+            if (!isFpvCamera) {
+                currentControls.gear = 0
+            }
         }
 
         // M: 하부카메라 (toggleBottomView / gear: 20~50)
@@ -94,15 +124,15 @@ class MainActivity : AppCompatActivity() {
             isBottomCamera = !isBottomCamera
             isFpvCamera = false
 
-            // drone.js: 20 < gear < 50 -> bottomView = true, 90 < gear < 110 -> camera reset
             currentControls.gear = if (isBottomCamera) 30 else 100
-
             sendControlData(key = "M", action = "toggleBottomView")
+            if (!isBottomCamera) {
+                currentControls.gear = 0
+            }
         }
 
         // B: 폭탄투하 (dropBomb / leftSwitch: -1)
         btnB.setOnClickListener {
-            // drone.js: leftSwitch == -1 -> bombDropped = true
             currentControls.leftSwitch = -1
             sendControlData(key = "B", action = "dropBomb")
             currentControls.leftSwitch = 0
@@ -169,6 +199,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        mainHandler.removeCallbacksAndMessages(null)
         webSocket?.close(1000, "Activity Destroyed")
         client.dispatcher.executorService.shutdown()
     }
