@@ -20,7 +20,7 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val PREFS_NAME = "DroneSimPrefs"
         private const val KEY_SERVER_URL = "server_url"
-        private const val DEFAULT_URL = "ws://192.168.1.3:8080"
+        private const val DEFAULT_URL = "wss://webbasedronesimulation.onrender.com" //ws://192.168.1.3:8080
     }
 
     private lateinit var client: OkHttpClient
