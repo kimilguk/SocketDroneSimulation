@@ -5,13 +5,23 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.widget.Button
+import android.widget.EditText
+import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.edit
 import okhttp3.*
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
 
 class MainActivity : AppCompatActivity() {
+
+    companion object {
+        private const val PREFS_NAME = "DroneSimPrefs"
+        private const val KEY_SERVER_URL = "server_url"
+        private const val DEFAULT_URL = "ws://192.168.1.3:8080"
+    }
 
     private lateinit var client: OkHttpClient
     private var webSocket: WebSocket? = null
@@ -49,14 +59,27 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        initWebSocket()
-
         val joystickLeft = findViewById<JoystickView>(R.id.joystickLeft)
         val joystickRight = findViewById<JoystickView>(R.id.joystickRight)
+        val btnConnect = findViewById<Button>(R.id.btnConnect)
         val btnV = findViewById<Button>(R.id.btnV)
         val btnC = findViewById<Button>(R.id.btnC)
         val btnM = findViewById<Button>(R.id.btnM)
         val btnB = findViewById<Button>(R.id.btnB)
+
+        // 서버 연결 설정 버튼
+        btnConnect.setOnClickListener {
+            showConnectDialog()
+        }
+
+        // 앱 시작 시 저장된 URL 접속 또는 대화상자 표시
+        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        val savedUrl = prefs.getString(KEY_SERVER_URL, null)
+        if (savedUrl == null) {
+            showConnectDialog()
+        } else {
+            connectWebSocket(savedUrl)
+        }
 
         // 왼쪽 조이스틱: 수직 제어부 (Yaw / Throttle)
         joystickLeft.onJoystickMoveListener = { x, y ->
@@ -139,27 +162,63 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun initWebSocket() {
+    private fun showConnectDialog() {
+        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        val savedUrl = prefs.getString(KEY_SERVER_URL, DEFAULT_URL) ?: DEFAULT_URL
+
+        val input = EditText(this).apply {
+            setText(savedUrl)
+            setSelection(text.length)
+            hint = "ws://192.168.1.3:8080 또는 wss://webbasedronesimulation.onrender.com"
+            setPadding(50, 40, 50, 40)
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("웹소켓 서버 주소 입력")
+            .setMessage("접속할 드론 시뮬레이터 서버 주소를 입력하세요.")
+            .setView(input)
+            .setPositiveButton("연결") { _, _ ->
+                val url = input.text.toString().trim()
+                if (url.isNotEmpty()) {
+                    prefs.edit { putString(KEY_SERVER_URL, url) }
+                    connectWebSocket(url)
+                } else {
+                    Toast.makeText(this, "주소를 입력해주세요.", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("취소", null)
+            .show()
+    }
+
+    private fun connectWebSocket(url: String) {
+        webSocket?.close(1000, "Reconnecting")
+        webSocket = null
+
         client = OkHttpClient.Builder()
             .readTimeout(0, TimeUnit.MILLISECONDS)
             .build()
 
-        // 대상 웹소켓 서버 주소 기입 (예: 드론 시뮬레이터 서버 주소)
         val request = Request.Builder()
-            //.url("wss://webbasedronesimulation.onrender.com") // 에뮬레이터에서 클라우드 플랫폼 접속
-            .url("ws://192.168.1.3:8080") // 에뮬레이터에서 PC 로컬 호스트 접속 시
+            .url(url)
             .build()
 
         val listener = object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
-                Log.d("WebSocket", "Connected to Server")
+                Log.d("WebSocket", "Connected to Server: $url")
+                runOnUiThread {
+                    Toast.makeText(this@MainActivity, "서버 연결 성공:\n$url", Toast.LENGTH_SHORT).show()
+                }
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 Log.e("WebSocket", "Error : " + t.message)
+                runOnUiThread {
+                    Toast.makeText(this@MainActivity, "서버 연결 실패:\n${t.message}", Toast.LENGTH_LONG).show()
+                }
             }
         }
 
+        Toast.makeText(this, "서버 연결 시도: $url", Toast.LENGTH_SHORT).show()
         webSocket = client.newWebSocket(request, listener)
     }
 
