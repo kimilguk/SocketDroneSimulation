@@ -8,7 +8,7 @@
 - 3.주소 변경 원할 시: 우측 상단의 서버 연결 설정 버튼을 누르면 언제든지 주소를 변경하여 재접속할 수 있습니다.
 
 ## 작업 정보
-- 안드로이드 스튜디오 래빗2버전 개발환경 사용
+- 안드로이드 스튜디오 래빗2버전기반 제미나이AI 에이전트 개발환경 사용
 - 현재 기존 조이스틱에서 마우스+드래그 기반으로 드론 움직임 제어방식을 변경 OK. (https://github.com/kimilguk/WebBaseDroneSimulation)
 - WebSocket 데이터로 드론 움직임 제어방식을 사용하는 안드로이드 앱은 제작 OK. (https://github.com/kimilguk/SocketDroneSimulation)
 
