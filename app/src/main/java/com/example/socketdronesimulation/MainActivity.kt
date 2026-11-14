@@ -31,6 +31,7 @@ class MainActivity : AppCompatActivity() {
 
     private var isFpvCamera = false
     private var isBottomCamera = false
+    private var isCameraMove = false
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var isSendingLoopRunning = false
@@ -62,6 +63,7 @@ class MainActivity : AppCompatActivity() {
         val joystickLeft = findViewById<JoystickView>(R.id.joystickLeft)
         val joystickRight = findViewById<JoystickView>(R.id.joystickRight)
         val btnConnect = findViewById<Button>(R.id.btnConnect)
+        val btnE = findViewById<Button>(R.id.btnE)
         val btnV = findViewById<Button>(R.id.btnV)
         val btnC = findViewById<Button>(R.id.btnC)
         val btnM = findViewById<Button>(R.id.btnM)
@@ -83,6 +85,7 @@ class MainActivity : AppCompatActivity() {
 
         // 왼쪽 조이스틱: 수직 제어부 (Yaw / Throttle)
         joystickLeft.onJoystickMoveListener = { x, y ->
+            currentControls.leftSwitch = 0 // 드론 조이스틱 조작 시 폭탄 재장착 (leftSwitch = 0)
             currentControls.yaw = mapJoystickAxis(x, 19, 244)
             currentControls.throttle = mapJoystickAxis(y, 20, 244)
             isLeftJoystickActive = true
@@ -97,6 +100,7 @@ class MainActivity : AppCompatActivity() {
 
         // 오른쪽 조이스틱: 수평 제어부 (Roll / Pitch)
         joystickRight.onJoystickMoveListener = { x, y ->
+            currentControls.leftSwitch = 0 // 드론 조이스틱 조작 시 폭탄 재장착 (leftSwitch = 0)
             currentControls.roll = mapJoystickAxis(x, 19, 241)
             currentControls.pitch = mapJoystickAxis(y, 17, 243)
             isRightJoystickActive = true
@@ -109,9 +113,13 @@ class MainActivity : AppCompatActivity() {
             sendControlData()
         }
 
-        // V (출발지점으로 재시작) 버튼 추가 및 클릭 리스너 설정
-        btnV.setOnClickListener {
-            // 1. 앱 내부 조이스틱 및 컨트롤 변수 초기화 (134 = 원점)
+        // E: 출발지점으로 재시작 (resetDrone / Key E)
+        btnE.setOnClickListener {
+            if (isCameraMove) {
+                isCameraMove = false
+                sendPulseControlData(key = "V", action = "toggleCameraMoveMode")
+            }
+
             currentControls.roll = 134
             currentControls.pitch = 134
             currentControls.yaw = 134
@@ -125,18 +133,40 @@ class MainActivity : AppCompatActivity() {
             joystickLeft.resetJoystick()
             joystickRight.resetJoystick()
 
-            // 2. drone.js에 resetDrone() 실행을 요청하는 웹소켓 전송
-            sendControlData(key = "V", action = "reset")
+            sendPulseControlData(key = "E", action = "reset")
             currentControls.gear = 0
+        }
+
+        // V: 카메라 이동 (toggleCameraMoveMode / Key V 펄스 전송 후 V 신호 자동 클리어)
+        btnV.setOnClickListener {
+            isCameraMove = !isCameraMove
+            if (isCameraMove) {
+                isFpvCamera = true // drone.js에서 cameraMoveMode 켜질 때 droneView = true로 설정되므로 상태 동기화
+                isBottomCamera = false
+            } else {
+                isFpvCamera = true //false
+                isBottomCamera = false
+                currentControls.gear = 15 //100
+            }
+
+            sendPulseControlData(key = "V", action = "toggleCameraMoveMode")
+            if (!isCameraMove) {
+                currentControls.gear = 0
+            }
         }
 
         // C: 1인칭시점 카메라 (toggleDroneView / gear: 10~20)
         btnC.setOnClickListener {
+            if (isCameraMove) {
+                isCameraMove = false
+                sendPulseControlData(key = "V", action = "toggleCameraMoveMode")
+            }
+
             isFpvCamera = !isFpvCamera
             isBottomCamera = false
 
             currentControls.gear = if (isFpvCamera) 15 else 100
-            sendControlData(key = "C", action = "toggleDroneView")
+            sendPulseControlData(key = "C", action = "toggleDroneView")
             if (!isFpvCamera) {
                 currentControls.gear = 0
             }
@@ -144,21 +174,25 @@ class MainActivity : AppCompatActivity() {
 
         // M: 하부카메라 (toggleBottomView / gear: 20~50)
         btnM.setOnClickListener {
+            if (isCameraMove) {
+                isCameraMove = false
+                sendPulseControlData(key = "V", action = "toggleCameraMoveMode")
+            }
+
             isBottomCamera = !isBottomCamera
             isFpvCamera = false
 
             currentControls.gear = if (isBottomCamera) 30 else 100
-            sendControlData(key = "M", action = "toggleBottomView")
+            sendPulseControlData(key = "M", action = "toggleBottomView")
             if (!isBottomCamera) {
                 currentControls.gear = 0
             }
         }
 
-        // B: 폭탄투하 (dropBomb / leftSwitch: -1)
+        // B: 폭탄투하 (dropBomb / leftSwitch: -1 유지하여 폭탄 낙하 수행)
         btnB.setOnClickListener {
             currentControls.leftSwitch = -1
             sendControlData(key = "B", action = "dropBomb")
-            currentControls.leftSwitch = 0
         }
     }
 
@@ -231,6 +265,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // 펄스 신호 전송 후 50ms 뒤 V/키 상태 해제 패킷 자동 송신
+    private fun sendPulseControlData(key: String, action: String) {
+        sendControlData(key = key, action = action)
+        mainHandler.postDelayed({
+            sendControlData()
+        }, 50)
+    }
+
     // JSON 객체를 생성하여 웹소켓으로 송신
     private fun sendControlData(key: String? = null, action: String? = null) {
         val json = JSONObject().apply {
@@ -242,11 +284,12 @@ class MainActivity : AppCompatActivity() {
             put("gear", currentControls.gear)
             if (key != null) {
                 put("key", key)
+                put(key, true)
             }
             if (action != null) {
                 put("action", action)
                 if (action == "reset") {
-                    put("V", true)
+                    put("reset", true)
                 }
                 if (action == "dropBomb") {
                     put("bomb", true)

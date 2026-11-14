@@ -12,8 +12,8 @@
 - 현재 기존 조이스틱에서 마우스+드래그 기반으로 드론 움직임 제어방식을 변경 OK. (https://github.com/kimilguk/WebBaseDroneSimulation)
 - WebSocket 데이터로 드론 움직임 제어방식을 사용하는 안드로이드 앱은 제작 OK. (https://github.com/kimilguk/SocketDroneSimulation)
 
-![Screenshot 2026-11-13](Screenshot_20261113_153343.png)
+![Screenshot 2026-11-14](Screenshot_20261114_152508.png)
 
 ## 원본 깃 허브 정보
 
-- 안드로이드 스튜디오 래빗2버전에 내장된 Built-in Agent 사용
+- 안드로이드 스튜디오 래빗2버전에 내장된 Built-in Agent 사용(구글 제미나이)
